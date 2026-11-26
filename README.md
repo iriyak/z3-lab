@@ -27,7 +27,7 @@ z3 の場所は `Z3_EXE` > `lib\z3\bin\z3.exe` > `lib\z3.exe` > PATH の順で�
 | コマンド | 内容 |
 |---|---|
 | `z3lab version` | z3 のバージョン |
-| `z3lab solve [--json] [--timeout 秒] [--memory MB] [--stats] [--raw] [File.smt2 \| -]` | SMT-LIB 2 を解く。ファイル省略か `-` で標準入力 |
+| `z3lab solve [--json] [--timeout 秒] [--memory MB] [--stats] [--backend exe\|wasm] [--raw] [File.smt2 \| -]` | SMT-LIB 2 を解く。ファイル省略か `-` で標準入力 |
 | `z3lab put Name.smt2` | 標準入力を `work/` に保存 |
 
 `solve` は入力に `(check-sat)` を **足す**(続けて `get-model` / `get-unsat-core` / `reason-unknown`)。
@@ -40,6 +40,18 @@ z3 の場所は `Z3_EXE` > `lib\z3\bin\z3.exe` > `lib\z3.exe` > PATH の順で�
 終了コード: 0 sat、10 unsat、11 unknown、12 timeout、1 error、2 使い方の誤り。
 
 タイムアウトは z3 の `-T:` と、その 5 秒後のプロセス kill の二重。
+
+### バックエンド
+
+| `--backend` | 中身 | 特徴 |
+|---|---|---|
+| `exe`(既定) | 公式の z3 実行ファイルを子プロセスで(`z3 -in`) | 速い。`--memory` が効く。呼び出しごとにプロセスを起こす |
+| `wasm` | npm の `z3-solver`(Z3 を WASM にしたもの)をプロセス内で | 初回に読み込み(約 0.3〜0.8 秒)。大きい問題では exe の数倍遅い。`--memory` は効かない。`bun add z3-solver` が必要 |
+
+既定は環境変数 `Z3_BACKEND` でも変えられる。どちらも同じ SMT-LIB スクリプトを受け取り、同じ形の結果を返す
+(`lib/smtlib.ts` がスクリプトの組み立てと出力の解釈を共有している)。WASM 版は `Z3.eval_smtlib2_string` に
+スクリプトを丸ごと渡す。時間制限は `(set-option :timeout)` で、効かなかったときのために 5 秒後に
+ワーカースレッドを止める。
 
 ## MCP ツール: `z3`
 
@@ -69,8 +81,18 @@ Documents に置いたなら必ず指定)、`Z3_EXE`。
 | `sudoku/sudoku.smt2` | 数独(Wikipedia の例題)を手で書いた SMT-LIB。解は `model` の `c<行><列>`。`distinct` だけで書ける |
 | `sudoku/sudoku-unique.smt2` | 数独の解が唯一かの確認。解を 1 つ除外してもう一度解かせる(`sat`、`unsat` の順に出れば唯一)。自前の `check-sat` があるので raw で動く |
 
+## 実験(`experiments/`)
+
+| ファイル | 内容 |
+|---|---|
+| `probe-z3-solver.mjs` | npm の `z3-solver` が bun / Node で動くかの 10 項目の確認(`bun` でも `node` でも実行できる) |
+| `compare-backends.ts` | 2 つのバックエンドに同じ問題(`examples/` の全 `.smt2` と、生成した N クイーン)を解かせ、判定が一致するか・時間を比べる。`bun experiments\compare-backends.ts [--repeat N] [--timeout 秒]` |
+
 ## 構成と今後
 
 - `lib/solver.ts` … CLI と MCP が知っている薄い `Solver` インターフェース
-- `lib/z3-exe.ts` … バックエンド 1(z3 実行ファイルを子プロセスで。今はここだけ)
-- 予定: `z3-solver`(npm、WASM)を第二バックエンドとして `lib/` に追加。`push/pop` の常駐セッション。名前付きの式から組む入口
+- `lib/smtlib.ts` … 両バックエンド共通。スクリプトの組み立て(`check-sat` などを足す)と、z3 の出力から `SolveResult` への変換
+- `lib/z3-exe.ts` … バックエンド 1(z3 実行ファイルを子プロセスで)
+- `lib/z3-wasm.ts` … バックエンド 2(npm の `z3-solver`、WASM)
+- `lib/index.ts` … `makeSolver("exe" | "wasm")`
+- 予定: `push/pop` の常駐セッション。DIMACS の取り込み。名前付きの式から組む入口

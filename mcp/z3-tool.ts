@@ -32,6 +32,7 @@ export const z3Input = {
     "SMT-LIB 2 text (declare-const / assert ...). Do not add (check-sat): it is appended, followed by get-model and get-unsat-core. " +
     "Name assertions with (assert (! F :named n)) to get an unsat core. Alternative to `spec`."),
   spec: z.string().optional().describe("Existing .smt2 path in the lab, e.g. examples/nqueens4.smt2. Alternative to `source`."),
+  backend: z.enum(["exe", "wasm"]).optional().describe("exe: the z3 executable (default). wasm: the npm z3-solver (WASM, in-process; no memoryMb)."),
   raw: z.boolean().optional().describe("Run the script exactly as given (use for scripts with their own check-sat / get-value / push / pop); z3's output comes back in `output`."),
   stats: z.boolean().optional().describe("Include z3 statistics in the result (long; off by default)."),
   timeoutSec: z.number().int().min(1).max(1800).optional().describe("Wall-clock limit (default 30)."),
@@ -49,6 +50,7 @@ export async function runZ3(a: z.infer<z.ZodObject<typeof z3Input>>) {
   if (a.source !== undefined && a.spec) return out("Give only one of `source` and `spec`.", true);
   const args = ["solve", "--json", "--timeout", String(timeoutSec)];
   if (a.memoryMb) args.push("--memory", String(a.memoryMb));
+  if (a.backend) args.push("--backend", a.backend);
   if (a.raw) args.push("--raw");
   if (a.stats) args.push("--stats");
   if (a.spec) args.push(path.isAbsolute(a.spec) ? a.spec : path.join(LAB, a.spec)); else args.push("-");

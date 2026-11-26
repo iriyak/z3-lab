@@ -4,7 +4,7 @@ export type ModelValue = string | number | boolean;
 
 export interface SolveOptions {
   timeoutSec?: number;   // wall clock (z3 -T: plus a kill a few seconds later). default 30
-  memoryMb?: number;     // z3 -memory:
+  memoryMb?: number;     // z3 -memory: (z3 executable backend only)
   stats?: boolean;       // include z3 statistics in the result (off by default: they are long)
   raw?: boolean;         // run the script as is (no check-sat / get-model appended); output returned in `output`
 }
@@ -27,4 +27,5 @@ export interface Solver {
   readonly name: string;
   version(): Promise<string>;
   solve(smtlib: string, opts?: SolveOptions): Promise<SolveResult>;
+  dispose?(): Promise<void>; // release resources (the WASM backend's worker threads); call before the process ends
 }

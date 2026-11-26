@@ -28,35 +28,42 @@ const expect = (name: string, ok: boolean, detail = "") => {
 
 console.log("tools:", (await client.listTools()).tools.map((t) => t.name).join(", "));
 
-let r = await call({ action: "version" });
-expect("version", /Z3 version/i.test(r.text), r.text);
+// The same checks run against each backend. wasm needs `bun add z3-solver`; it is skipped when the package is missing.
+const hasWasm = await import("z3-solver").then(() => true, () => false);
+for (const backend of hasWasm ? ["exe", "wasm"] : ["exe"]) {
+  console.log(`\n-- backend: ${backend}`);
+  const ask = (args: Record<string, unknown>) => call({ ...args, backend });
+  let r = await ask({ action: "version" });
+  expect("version", /Z3 version/i.test(r.text), r.text);
 
-r = await call({ action: "solve", spec: "examples/sat-basic.smt2" });
-let j = JSON.parse(r.text);
-expect("sat-basic: sat, x + 2y = 7", !r.isError && j.status === "sat" && j.model.x + 2 * j.model.y === 7 && j.model.x > 2, r.text);
+  r = await ask({ action: "solve", spec: "examples/sat-basic.smt2" });
+  let j = JSON.parse(r.text);
+  expect(`sat-basic: sat, x + 2y = 7 (backend ${j.backend})`, !r.isError && j.backend === `z3-${backend}` && j.status === "sat" && j.model.x + 2 * j.model.y === 7 && j.model.x > 2, r.text);
 
-r = await call({ action: "solve", spec: "examples/unsat-core.smt2" });
-j = JSON.parse(r.text);
-expect("unsat-core: unsat is a verdict, not a tool error", !r.isError && j.status === "unsat" && j.unsatCore.sort().join() === "too-big,too-small", r.text);
+  r = await ask({ action: "solve", spec: "examples/unsat-core.smt2" });
+  j = JSON.parse(r.text);
+  expect("unsat-core: unsat is a verdict, not a tool error", !r.isError && j.status === "unsat" && j.unsatCore.sort().join() === "too-big,too-small", r.text);
 
-r = await call({ action: "solve", source: "(declare-const p Bool)(declare-const q Bool)(assert (or p q))(assert (not p))" });
-j = JSON.parse(r.text);
-expect("inline SAT problem", j.status === "sat" && j.model.p === false && j.model.q === true, r.text);
+  r = await ask({ action: "solve", source: "(declare-const p Bool)(declare-const q Bool)(assert (or p q))(assert (not p))" });
+  j = JSON.parse(r.text);
+  expect("inline SAT problem", j.status === "sat" && j.model.p === false && j.model.q === true, r.text);
 
-r = await call({ action: "solve", source: "(declare-const x Int)(assert (> x 1))(check-sat)(push)(assert (< x 0))(check-sat)(pop)" });
-j = JSON.parse(r.text);
-expect("script with its own check-sat runs raw", j.mode === "raw" && j.output.split("\n").join(",") === "sat,unsat", r.text);
+  r = await ask({ action: "solve", source: "(declare-const x Int)(assert (> x 1))(check-sat)(push)(assert (< x 0))(check-sat)(pop)" });
+  j = JSON.parse(r.text);
+  expect("script with its own check-sat runs raw", j.mode === "raw" && j.output.split("\n").join(",") === "sat,unsat", r.text);
 
-r = await call({ action: "solve", source: "(assert (> x 1))" });
-j = JSON.parse(r.text);
-expect("undeclared constant -> status error with message", j.status === "error" && /unknown constant x/.test(j.errors[0]) && /line 1\b/.test(j.errors[0]), r.text);
+  r = await ask({ action: "solve", source: "(assert (> x 1))" });
+  j = JSON.parse(r.text);
+  expect("undeclared constant -> status error with message", j.status === "error" && /unknown constant x/.test(j.errors[0]) && /line 1\b/.test(j.errors[0]), r.text);
 
-r = await call({ action: "solve", source: "(declare-const x Int)(declare-const y Int)(declare-const z Int)(assert (> x 1))(assert (> y 1))(assert (> z 1))(assert (= (+ (* x x x) (* y y y)) (* z z z)))", timeoutSec: 1 });
-j = JSON.parse(r.text);
-expect("timeout reported", !r.isError && j.status === "timeout", r.text);
+  r = await ask({ action: "solve", source: "(declare-const x Int)(declare-const y Int)(declare-const z Int)(assert (> x 1))(assert (> y 1))(assert (> z 1))(assert (= (+ (* x x x) (* y y y)) (* z z z)))", timeoutSec: 1 });
+  j = JSON.parse(r.text);
+  expect("timeout reported", !r.isError && j.status === "timeout", r.text);
 
-r = await call({ action: "solve" });
-expect("source or spec required", r.isError, r.text);
+  r = await ask({ action: "solve" });
+  expect("source or spec required", r.isError, r.text);
+
+}
 
 await client.close();
 console.log(failed ? `${failed} failed` : "all passed");

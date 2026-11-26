@@ -8,8 +8,9 @@
 //   --timeout SEC     wall-clock limit (default 30)
 //   --memory MB       z3 memory limit
 //   --stats           include z3 statistics
+//   --backend NAME    exe (z3 executable, default) or wasm (npm z3-solver)
 //   --raw             run the script as is (no check-sat / get-model appended); z3's output in `output`
-// env: Z3_EXE (path to z3), Z3_BACKEND (exe)
+// env: Z3_EXE (path to z3), Z3_BACKEND (exe | wasm)
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -26,7 +27,9 @@ const [cmd = "help", ...rest] = process.argv.slice(2);
 
 switch (cmd) {
   case "version": {
-    try { console.log(await makeSolver().version()); } catch (e) { die(String((e as Error).message ?? e)); }
+    const backend = rest[0] === "--backend" ? rest[1] : undefined;
+    const solver = (() => { try { return makeSolver(backend); } catch (e) { return die((e as Error).message); } })();
+    try { console.log(await solver.version()); } catch (e) { die(String((e as Error).message ?? e)); } finally { await solver.dispose?.(); }
     break;
   }
   case "put": {
@@ -40,12 +43,13 @@ switch (cmd) {
     break;
   }
   case "solve": {
-    let json = false, raw = false, stats = false, timeoutSec: number | undefined, memoryMb: number | undefined, file = "-";
+    let json = false, raw = false, stats = false, backend: string | undefined, timeoutSec: number | undefined, memoryMb: number | undefined, file = "-";
     for (let i = 0; i < rest.length; i++) {
       const a = rest[i];
       if (a === "--json") json = true;
       else if (a === "--raw") raw = true;
       else if (a === "--stats") stats = true;
+      else if (a === "--backend") backend = rest[++i];
       else if (a === "--timeout") timeoutSec = Number(rest[++i]);
       else if (a === "--memory") memoryMb = Number(rest[++i]);
       else if (a !== "-" && a.startsWith("-")) die(`unknown option ${a}`);
@@ -56,7 +60,9 @@ switch (cmd) {
     let text: string;
     if (file === "-") text = await readStdin();
     else { if (!existsSync(file)) die(`no such file: ${file}`); text = stripBom(readFileSync(file, "utf8")); }
-    const r = await makeSolver().solve(text, { timeoutSec, memoryMb, raw, stats });
+    const solver = (() => { try { return makeSolver(backend); } catch (e) { return die((e as Error).message); } })();
+    const r = await solver.solve(text, { timeoutSec, memoryMb, raw, stats });
+    await solver.dispose?.(); // the WASM backend keeps worker threads alive
     if (json) console.log(JSON.stringify(r, null, 2));
     else {
       if (r.mode !== "raw") console.log(r.status); // raw: the verdicts are in z3's own output below
@@ -71,8 +77,9 @@ switch (cmd) {
     break;
   }
   case "help": case "-h": case "--help": {
-    const src = readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(1, 14);
-    console.log(src.map((l) => l.replace(/^\/\/ ?/, "")).join("\n"));
+    const lines = readFileSync(fileURLToPath(import.meta.url), "utf8").split("\n").slice(1);
+    const header = lines.slice(0, lines.findIndex((l) => !l.startsWith("//"))); // the leading comment block is the help text
+    console.log(header.map((l) => l.replace(/^\/\/ ?/, "")).join("\n"));
     break;
   }
   default:

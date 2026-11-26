@@ -4,7 +4,7 @@
 // No argument: the built-in example (the Wikipedia puzzle). "-": read the puzzle from stdin.
 // Puzzle format: 81 cells, row by row. Digits 1-9 are givens; "." "0" "_" "*" are blanks.
 // Whitespace, "|" and lines made only of "-", "+", "=" are ignored, so a pretty-printed grid works too.
-// Exit codes: 0 solved, 10 no solution, 2 bad input.  env: Z3_EXE (path to z3), as for z3lab.
+// Exit codes: 0 solved, 10 no solution, 2 bad input.  env: Z3_EXE (path to z3), Z3_BACKEND (exe | wasm), as for z3lab.
 import { readFileSync } from "node:fs";
 import { makeSolver } from "../../lib/index"; // examples/sudoku/ -> lab root -> lib/
 
@@ -60,8 +60,8 @@ const base = smt(cells);
 const solver = makeSolver();
 
 const first = await solver.solve(base);
-if (first.status === "unsat") { console.log("no solution"); process.exit(10); }
-if (first.status !== "sat" || !first.model) { console.error(`sudoku: z3 says ${first.status}${first.errors ? ": " + first.errors.join("; ") : ""}`); process.exit(1); }
+if (first.status === "unsat") { console.log("no solution"); await solver.dispose?.(); process.exit(10); }
+if (first.status !== "sat" || !first.model) { console.error(`sudoku: z3 says ${first.status}${first.errors ? ": " + first.errors.join("; ") : ""}`); await solver.dispose?.(); process.exit(1); }
 console.log(grid(first.model));
 
 // exclude the solution just found; if z3 can still solve it, the puzzle has more than one solution
@@ -70,3 +70,4 @@ const second = await solver.solve(base + exclude);
 if (second.status === "unsat") console.log("\nunique solution");
 else if (second.status === "sat" && second.model) console.log("\nnot unique; another solution:\n" + grid(second.model));
 else console.log(`\nuniqueness check: ${second.status}`);
+await solver.dispose?.(); // the WASM backend (Z3_BACKEND=wasm) keeps worker threads alive
