@@ -63,6 +63,11 @@ Documents に置いたなら必ず指定)、`Z3_EXE`。
 | `unsat-core.smt2` | 名前付き表明で unsat core |
 | `nqueens4.smt2` | 4 クイーン |
 | `with-function.smt2` | 未解釈関数。model に `functions` が出る |
+| `sudoku/sudoku.ts` | 数独を解いて盤面を表示し、解が唯一かも判定する bun スクリプト(自己完結)。`bun examples\sudoku\sudoku.ts [盤面ファイル \| -]`(引数なしは内蔵の例題)。盤面は 81 マス、空きは `.` `0` `_` `*`、空白や罫線は無視 |
+| `sudoku/sudoku.ps1` | `sudoku.ts` の PowerShell ランチャーと使い方(パイプ入力に対応) |
+| `sudoku/puzzle.txt` | `sudoku.ts` に渡す盤面のサンプル(罫線入りの見た目のまま書ける) |
+| `sudoku/sudoku.smt2` | 数独(Wikipedia の例題)を手で書いた SMT-LIB。解は `model` の `c<行><列>`。`distinct` だけで書ける |
+| `sudoku/sudoku-unique.smt2` | 数独の解が唯一かの確認。解を 1 つ除外してもう一度解かせる(`sat`、`unsat` の順に出れば唯一)。自前の `check-sat` があるので raw で動く |
 
 ## 構成と今後
 

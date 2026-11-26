@@ -59,7 +59,7 @@ switch (cmd) {
     const r = await makeSolver().solve(text, { timeoutSec, memoryMb, raw, stats });
     if (json) console.log(JSON.stringify(r, null, 2));
     else {
-      console.log(r.status);
+      if (r.mode !== "raw") console.log(r.status); // raw: the verdicts are in z3's own output below
       for (const [k, v] of Object.entries(r.model ?? {})) console.log(`  ${k} = ${v}`);
       for (const [k, f] of Object.entries(r.functions ?? {})) console.log(`  ${k}${f.params} : ${f.sort} = ${f.body}`);
       if (r.unsatCore) console.log(`  unsat core: ${r.unsatCore.join(" ")}`);

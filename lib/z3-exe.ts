@@ -75,6 +75,8 @@ function parseModel(items: Sexp[], r: SolveResult) {
     if (Array.isArray(params) && params.length === 0) (r.model ??= {})[name] = value(body);
     else (r.functions ??= {})[name] = { params: toSmt(params), sort, body: toSmt(body) };
   }
+  // z3 lists constants in an arbitrary order; sort by name (numbers inside names in numeric order) so models are readable
+  if (r.model) r.model = Object.fromEntries(Object.entries(r.model).sort(([a], [b]) => a.localeCompare(b, "en", { numeric: true })));
 }
 
 function parseStats(items: Sexp[]): Record<string, number | string> | undefined {
