@@ -27,6 +27,7 @@
 | `probe-z3-solver.mjs` | npm の `z3-solver` が bun / Node で動くかの 10 項目の確認(`bun` でも `node` でも実行できる) |
 | `compare-backends.ts` | 2 つのバックエンドに同じ問題(`examples/` の全 `.smt2` / `.cnf` と、生成した N クイーンとランダム 3-SAT)を解かせ、判定が一致するか・時間を比べる。`bun experiments\compare-backends.ts [--repeat N] [--timeout 秒]`。結果の表は [backends.md](backends.md) |
 | `satlib.ts` | フォルダ以下の `.cnf` を全部解いて、判定を確かめる。SATLIB の `uf...`(全部 sat)と `uuf...`(全部 unsat)はファイル名から期待値を決める(`--expect` でも指定できる)。`bun experiments\satlib.ts <フォルダ> [--expect sat\|unsat] [--backend exe\|wasm] [--limit N] [--timeout 秒]`。sat の答えは割り当てを全節で検査する。1000 ファイルなら `--backend wasm`(プロセスを起こさない)が向く。期待と違うものがあれば終了コード 1 |
+| `satlib-all.ps1` | 大きい SATLIB のセット(uf / uuf の 75・125・150・175・200・225・250 変数)を小さい順に続けて流し、結果を `work\satlib-results.txt` に残す PowerShell。無いセットは SATLIB から取得して `work\satlib-<名前>` に展開する。既定は exe バックエンド(重い問題では wasm より速い)。1 つ失敗しても続ける。`.\experiments\satlib-all.ps1 [-Sets uf150-645,...] [-Backend exe\|wasm] [-Timeout 秒]` |
 
 ## 動作確認
 
