@@ -40,4 +40,8 @@ SAT コンペの慣例は **10 = SAT、20 = UNSAT** で、数字の意味が逆�
 - `examples/dimacs/`: `small-sat.cnf`、`pigeonhole-4-3.cnf`(鳩 4 羽・巣 3 つ、22 節、unsat)、
   `random-3sat-20-91.cnf`(20 変数・91 節、seed 1)。
 - `compare-backends` で、ランダム 3-SAT(n=50 / 100 / 150、比 4.26、固定シード)を exe と wasm の両方で解き、判定が一致。
-- 未確認: SATLIB の公開ベンチマーク(uf20 など)。小さい `.cnf` を置けばそのまま試せる。
+- **SATLIB の uf20-91**(1000 問、すべて充足可能。[ページ](https://www.cs.ubc.ca/~hoos/SATLIB/Benchmarks/SAT/RND3SAT/descr.html))を
+  `bun experiments\satlib.ts work\satlib --backend wasm` で全部解いた(Windows、11/26): **1000 問すべて sat、問題 0 件**、
+  全体で 28.2 秒、1 問あたりの中央値 14 ms、最大 248 ms。sat の割り当ては全節で検査済み。
+- 未確認: uuf(充足不可能)のセット(uuf50-218 など)と、大きいセット(uf100 以上)。`satlib.ts` はファイル名から期待値を決めるので、
+  フォルダを置くだけで同じ手順で試せる。

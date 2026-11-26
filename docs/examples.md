@@ -26,6 +26,7 @@
 |---|---|
 | `probe-z3-solver.mjs` | npm の `z3-solver` が bun / Node で動くかの 10 項目の確認(`bun` でも `node` でも実行できる) |
 | `compare-backends.ts` | 2 つのバックエンドに同じ問題(`examples/` の全 `.smt2` / `.cnf` と、生成した N クイーンとランダム 3-SAT)を解かせ、判定が一致するか・時間を比べる。`bun experiments\compare-backends.ts [--repeat N] [--timeout 秒]`。結果の表は [backends.md](backends.md) |
+| `satlib.ts` | フォルダ以下の `.cnf` を全部解いて、判定を確かめる。SATLIB の `uf...`(全部 sat)と `uuf...`(全部 unsat)はファイル名から期待値を決める(`--expect` でも指定できる)。`bun experiments\satlib.ts <フォルダ> [--expect sat\|unsat] [--backend exe\|wasm] [--limit N] [--timeout 秒]`。sat の答えは割り当てを全節で検査する。1000 ファイルなら `--backend wasm`(プロセスを起こさない)が向く。期待と違うものがあれば終了コード 1 |
 
 ## 動作確認
 
