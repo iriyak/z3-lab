@@ -43,5 +43,8 @@ SAT コンペの慣例は **10 = SAT、20 = UNSAT** で、数字の意味が逆�
 - **SATLIB の uf20-91**(1000 問、すべて充足可能。[ページ](https://www.cs.ubc.ca/~hoos/SATLIB/Benchmarks/SAT/RND3SAT/descr.html))を
   `bun experiments\satlib.ts work\satlib --backend wasm` で全部解いた(Windows、11/26): **1000 問すべて sat、問題 0 件**、
   全体で 28.2 秒、1 問あたりの中央値 14 ms、最大 248 ms。sat の割り当ては全節で検査済み。
-- 未確認: uuf(充足不可能)のセット(uuf50-218 など)と、大きいセット(uf100 以上)。`satlib.ts` はファイル名から期待値を決めるので、
+- **SATLIB の uuf50-218**(1000 問、すべて充足不可能)も同じ手順で全部解いた(Windows、11/26): **1000 問すべて unsat、問題 0 件**、
+  33.0 秒、中央値 18 ms、最大 374 ms。ただし `unsat` には割り当てのような検査できる証拠がなく、SATLIB が保証する「全問 unsat」と
+  z3 の答えが一致した、という確認(証明そのものは検査していない)。
+- 未確認: 大きいセット(uf100-430、uuf100-430 以上)。`satlib.ts` はファイル名から期待値を決めるので、
   フォルダを置くだけで同じ手順で試せる。
