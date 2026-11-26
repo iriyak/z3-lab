@@ -55,7 +55,15 @@ export class Z3WasmSolver implements Solver {
       return fail("error", (e as Error).message ?? String(e), Date.now() - t0);
     } finally {
       clearTimeout(timer);
+      this.release(l, ctx);
     }
+  }
+
+  // The high-level Context frees itself only from a GC finalizer, and the WASM heap is a fixed 2 GB, so ~80
+  // calls in one process ran out of memory (Aborted(Cannot enlarge memory arrays ...)). Delete the context
+  // now (300 calls with forced GC afterwards ran clean, so the finalizer's later delete is harmless).
+  private release(l: Loaded, ctx: any): void {
+    try { l.Z3.del_context(ctx.ptr); } catch { /* the instance may already be gone */ }
   }
 
   async dispose(): Promise<void> {

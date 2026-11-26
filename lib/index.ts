@@ -3,6 +3,7 @@ import { Z3ExeSolver } from "./z3-exe";
 import { Z3WasmSolver } from "./z3-wasm";
 import type { Solver } from "./solver";
 export type { Solver, SolveOptions, SolveResult, Status } from "./solver";
+export { parseDimacs, dimacsToSmt, solveDimacs, DimacsError } from "./dimacs";
 
 export const BACKENDS = ["exe", "wasm"] as const;
 

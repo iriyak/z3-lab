@@ -9,12 +9,13 @@
 //   --memory MB       z3 memory limit
 //   --stats           include z3 statistics
 //   --backend NAME    exe (z3 executable, default) or wasm (npm z3-solver)
+//   --dimacs          the input is DIMACS CNF (automatic for *.cnf files); prints "s SATISFIABLE" and "v ... 0" lines
 //   --raw             run the script as is (no check-sat / get-model appended); z3's output in `output`
 // env: Z3_EXE (path to z3), Z3_BACKEND (exe | wasm)
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { makeSolver } from "../lib/index";
+import { makeSolver, solveDimacs } from "../lib/index";
 
 const HERE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const die = (msg: string): never => { console.error(`z3lab: ${msg}`); process.exit(2); };
@@ -43,12 +44,13 @@ switch (cmd) {
     break;
   }
   case "solve": {
-    let json = false, raw = false, stats = false, backend: string | undefined, timeoutSec: number | undefined, memoryMb: number | undefined, file = "-";
+    let json = false, raw = false, stats = false, dimacs = false, backend: string | undefined, timeoutSec: number | undefined, memoryMb: number | undefined, file = "-";
     for (let i = 0; i < rest.length; i++) {
       const a = rest[i];
       if (a === "--json") json = true;
       else if (a === "--raw") raw = true;
       else if (a === "--stats") stats = true;
+      else if (a === "--dimacs") dimacs = true;
       else if (a === "--backend") backend = rest[++i];
       else if (a === "--timeout") timeoutSec = Number(rest[++i]);
       else if (a === "--memory") memoryMb = Number(rest[++i]);
@@ -61,10 +63,21 @@ switch (cmd) {
     if (file === "-") text = await readStdin();
     else { if (!existsSync(file)) die(`no such file: ${file}`); text = stripBom(readFileSync(file, "utf8")); }
     const solver = (() => { try { return makeSolver(backend); } catch (e) { return die((e as Error).message); } })();
-    const r = await solver.solve(text, { timeoutSec, memoryMb, raw, stats });
+    if (file !== "-" && /\.cnf$/i.test(file)) dimacs = true;
+    const r = dimacs ? await solveDimacs(solver, text, { timeoutSec, memoryMb, stats }) : await solver.solve(text, { timeoutSec, memoryMb, raw, stats });
     await solver.dispose?.(); // the WASM backend keeps worker threads alive
     if (json) console.log(JSON.stringify(r, null, 2));
-    else {
+    else if (r.dimacs) {
+      // SAT-solver style output: an "s" line, then the assignment in "v" lines
+      console.log(`s ${({ sat: "SATISFIABLE", unsat: "UNSATISFIABLE", unknown: "UNKNOWN", timeout: "TIMEOUT", error: "ERROR" } as const)[r.status]}`);
+      if (r.dimacs.assignment) {
+        let line = "v";
+        for (const l of [...r.dimacs.assignment, 0]) { if (line.length + String(l).length + 1 > 78) { console.log(line); line = "v"; } line += " " + l; }
+        console.log(line);
+      }
+      if (r.reasonUnknown) console.log(`c reason unknown: ${r.reasonUnknown}`);
+      for (const e of r.errors ?? []) console.error(`  error: ${e}`);
+    } else {
       if (r.mode !== "raw") console.log(r.status); // raw: the verdicts are in z3's own output below
       for (const [k, v] of Object.entries(r.model ?? {})) console.log(`  ${k} = ${v}`);
       for (const [k, f] of Object.entries(r.functions ?? {})) console.log(`  ${k}${f.params} : ${f.sort} = ${f.body}`);

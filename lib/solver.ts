@@ -19,6 +19,7 @@ export interface SolveResult {
   reasonUnknown?: string;
   stats?: Record<string, number | string>;
   errors?: string[];
+  dimacs?: { variables: number; clauses: number; assignment?: number[] }; // DIMACS input: sizes, and on sat the assignment (v1 true -> 1, false -> -1)
   output?: string;       // everything z3 printed before the appended epilogue (raw mode: all of it)
   elapsedMs: number;
 }

@@ -27,7 +27,7 @@ z3 の場所は `Z3_EXE` > `lib\z3\bin\z3.exe` > `lib\z3.exe` > PATH の順で�
 | コマンド | 内容 |
 |---|---|
 | `z3lab version` | z3 のバージョン |
-| `z3lab solve [--json] [--timeout 秒] [--memory MB] [--stats] [--backend exe\|wasm] [--raw] [File.smt2 \| -]` | SMT-LIB 2 を解く。ファイル省略か `-` で標準入力 |
+| `z3lab solve [--json] [--timeout 秒] [--memory MB] [--stats] [--backend exe\|wasm] [--raw] [--dimacs] [File.smt2 \| File.cnf \| -]` | SMT-LIB 2 を解く。ファイル省略か `-` で標準入力。`.cnf` か `--dimacs` なら DIMACS CNF として読む |
 | `z3lab put Name.smt2` | 標準入力を `work/` に保存 |
 
 `solve` は入力に `(check-sat)` を **足す**(続けて `get-model` / `get-unsat-core` / `reason-unknown`)。
@@ -37,9 +37,26 @@ z3 の場所は `Z3_EXE` > `lib\z3\bin\z3.exe` > `lib\z3.exe` > PATH の順で�
 `--json` の出力: `status`(`sat` / `unsat` / `unknown` / `timeout` / `error`)、`model`(定数 → 値)、
 `functions`(引数付きの `define-fun`)、`unsatCore`(`(! F :named n)` で名前を付けた表明のみ)、
 `reasonUnknown`、`errors`、`stats`(`--stats` のとき)、`elapsedMs`。
+DIMACS 入力では `model` の代わりに `dimacs`(`variables`、`clauses`、`assignment`)が付く。
 終了コード: 0 sat、10 unsat、11 unknown、12 timeout、1 error、2 使い方の誤り。
 
 タイムアウトは z3 の `-T:` と、その 5 秒後のプロセス kill の二重。
+
+### DIMACS CNF の取り込み
+
+SAT ソルバの標準形式(`c` コメント、`p cnf <変数> <節>`、1 節が `0` で終わる整数列)をそのまま読める。
+変数 `N` は Bool 定数 `vN` になり、節は `(assert (or ...))` に変換して解く(`lib/dimacs.ts`)。
+
+```powershell
+z3lab solve examples\dimacs\small-sat.cnf
+Get-Content examples\dimacs\pigeonhole-4-3.cnf | z3lab solve --dimacs -
+```
+
+テキスト出力は SAT ソルバの流儀(`s SATISFIABLE` / `s UNSATISFIABLE`、割り当ては `v 1 -2 3 0`)。
+`--json` では通常の結果に `dimacs.assignment` が付く。**終了コードは z3lab のまま**(sat 0、unsat 10)で、
+SAT コンペ式の 10 = SAT、20 = UNSAT とは違うので注意。SATLIB の末尾 `%` にも対応。
+形式の誤り(ヘッダなし、節の数の不一致、範囲外のリテラル、末尾の `0` 抜け)は `error` になる。
+sat のときは、割り当てが全節を満たすかを検査してから出す。
 
 ### バックエンド
 
@@ -60,11 +77,11 @@ z3 の場所は `Z3_EXE` > `lib\z3\bin\z3.exe` > `lib\z3.exe` > PATH の順で�
 
 ```sh
 bun run mcp/server.ts          # stdio。MCP Inspector から接続できる
-bun run mcp/smoke-test.ts      # 一通りの動作確認(8 件)
+bun run mcp/smoke-test.ts      # 一通りの動作確認(1 バックエンドあたり 12 件)
 ```
 
-引数: `action`(`version` / `solve`)、`source`(SMT-LIB 2 のインライン)か `spec`(lab 内のパス)、
-`raw`、`stats`、`timeoutSec`、`memoryMb`。環境変数: `Z3_LAB`(lab のフォルダ。既定 `<ホーム>/z3-lab`。
+引数: `action`(`version` / `solve`)、`source`(SMT-LIB 2 のインライン)、`spec`(lab 内のパス。`.cnf` も可)、
+`dimacs`(DIMACS CNF の本文)のどれか 1 つ、`raw`、`stats`、`timeoutSec`、`memoryMb`。環境変数: `Z3_LAB`(lab のフォルダ。既定 `<ホーム>/z3-lab`。
 Documents に置いたなら必ず指定)、`Z3_EXE`。
 
 ## サンプル(`examples/`)
@@ -75,6 +92,9 @@ Documents に置いたなら必ず指定)、`Z3_EXE`。
 | `unsat-core.smt2` | 名前付き表明で unsat core |
 | `nqueens4.smt2` | 4 クイーン |
 | `with-function.smt2` | 未解釈関数。model に `functions` が出る |
+| `dimacs/small-sat.cnf` | 小さな DIMACS(sat) |
+| `dimacs/pigeonhole-4-3.cnf` | 鳩の巣原理(鳩 4・巣 3、22 節。unsat) |
+| `dimacs/random-3sat-20-91.cnf` | ランダム 3-SAT(20 変数・91 節、seed 1。sat。SATLIB のファイルではない) |
 | `sudoku/sudoku.ts` | 数独を解いて盤面を表示し、解が唯一かも判定する bun スクリプト(自己完結)。`bun examples\sudoku\sudoku.ts [盤面ファイル \| -]`(引数なしは内蔵の例題)。盤面は 81 マス、空きは `.` `0` `_` `*`、空白や罫線は無視 |
 | `sudoku/sudoku.ps1` | `sudoku.ts` の PowerShell ランチャーと使い方(パイプ入力に対応) |
 | `sudoku/puzzle.txt` | `sudoku.ts` に渡す盤面のサンプル(罫線入りの見た目のまま書ける) |
@@ -86,7 +106,7 @@ Documents に置いたなら必ず指定)、`Z3_EXE`。
 | ファイル | 内容 |
 |---|---|
 | `probe-z3-solver.mjs` | npm の `z3-solver` が bun / Node で動くかの 10 項目の確認(`bun` でも `node` でも実行できる) |
-| `compare-backends.ts` | 2 つのバックエンドに同じ問題(`examples/` の全 `.smt2` と、生成した N クイーン)を解かせ、判定が一致するか・時間を比べる。`bun experiments\compare-backends.ts [--repeat N] [--timeout 秒]` |
+| `compare-backends.ts` | 2 つのバックエンドに同じ問題(`examples/` の全 `.smt2` / `.cnf` と、生成した N クイーンとランダム 3-SAT)を解かせ、判定が一致するか・時間を比べる。`bun experiments\compare-backends.ts [--repeat N] [--timeout 秒]` |
 
 ## 構成と今後
 
@@ -95,4 +115,5 @@ Documents に置いたなら必ず指定)、`Z3_EXE`。
 - `lib/z3-exe.ts` … バックエンド 1(z3 実行ファイルを子プロセスで)
 - `lib/z3-wasm.ts` … バックエンド 2(npm の `z3-solver`、WASM)
 - `lib/index.ts` … `makeSolver("exe" | "wasm")`
-- 予定: `push/pop` の常駐セッション。DIMACS の取り込み。名前付きの式から組む入口
+- `lib/dimacs.ts` … DIMACS のパーサと SMT-LIB への変換、`solveDimacs`
+- 予定: `push/pop` の常駐セッション。名前付きの式から組む入口(保留)

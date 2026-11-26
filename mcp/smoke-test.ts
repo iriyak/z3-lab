@@ -60,6 +60,23 @@ for (const backend of hasWasm ? ["exe", "wasm"] : ["exe"]) {
   j = JSON.parse(r.text);
   expect("timeout reported", !r.isError && j.status === "timeout", r.text);
 
+  r = await ask({ action: "solve", dimacs: "c tiny\np cnf 3 2\n1 -3 0\n2 3 -1 0\n" });
+  j = JSON.parse(r.text);
+  const clauses = [[1, -3], [2, 3, -1]];
+  expect("DIMACS inline: sat, assignment satisfies every clause, no model", !r.isError && j.status === "sat" && !j.model
+    && j.dimacs.variables === 3 && clauses.every((c) => c.some((l: number) => j.dimacs.assignment.includes(l))), r.text);
+
+  r = await ask({ action: "solve", spec: "examples/dimacs/pigeonhole-4-3.cnf" });
+  j = JSON.parse(r.text);
+  expect("DIMACS file (.cnf spec): pigeonhole 4 into 3 is unsat", !r.isError && j.status === "unsat" && j.dimacs.clauses === 22, r.text);
+
+  r = await ask({ action: "solve", dimacs: "p cnf 2 3\n1 2 0\n-1 0\n" });
+  j = JSON.parse(r.text);
+  expect("DIMACS clause count mismatch -> error", j.status === "error" && /header says 3 clauses, found 2/.test(j.errors[0]), r.text);
+
+  r = await ask({ action: "solve", source: "(assert true)", dimacs: "p cnf 0 0\n" });
+  expect("source and dimacs together rejected", r.isError, r.text);
+
   r = await ask({ action: "solve" });
   expect("source or spec required", r.isError, r.text);
 

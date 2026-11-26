@@ -31,7 +31,8 @@ export const z3Input = {
   source: z.string().optional().describe(
     "SMT-LIB 2 text (declare-const / assert ...). Do not add (check-sat): it is appended, followed by get-model and get-unsat-core. " +
     "Name assertions with (assert (! F :named n)) to get an unsat core. Alternative to `spec`."),
-  spec: z.string().optional().describe("Existing .smt2 path in the lab, e.g. examples/nqueens4.smt2. Alternative to `source`."),
+  spec: z.string().optional().describe("Existing .smt2 or .cnf path in the lab, e.g. examples/nqueens4.smt2 or examples/dimacs/small-sat.cnf (.cnf is read as DIMACS). Alternative to `source`."),
+  dimacs: z.string().optional().describe("DIMACS CNF text (p cnf V C, clauses ending in 0). Solved as a pure SAT problem over Bool v1..vn; the result has dimacs.assignment (v3 true -> 3, false -> -3) instead of model. Alternative to `source` and `spec`."),
   backend: z.enum(["exe", "wasm"]).optional().describe("exe: the z3 executable (default). wasm: the npm z3-solver (WASM, in-process; no memoryMb)."),
   raw: z.boolean().optional().describe("Run the script exactly as given (use for scripts with their own check-sat / get-value / push / pop); z3's output comes back in `output`."),
   stats: z.boolean().optional().describe("Include z3 statistics in the result (long; off by default)."),
@@ -46,15 +47,17 @@ export async function runZ3(a: z.infer<z.ZodObject<typeof z3Input>>) {
     const r = await runZ3lab(["version"], { timeoutMs: 20000 });
     return out((r.stdout || r.stderr).trim(), r.code !== 0);
   }
-  if (a.source === undefined && !a.spec) return out("Give either `source` or `spec`.", true);
-  if (a.source !== undefined && a.spec) return out("Give only one of `source` and `spec`.", true);
+  const given = [a.source !== undefined, !!a.spec, a.dimacs !== undefined].filter(Boolean).length;
+  if (given === 0) return out("Give one of `source`, `spec` or `dimacs`.", true);
+  if (given > 1) return out("Give only one of `source`, `spec` and `dimacs`.", true);
   const args = ["solve", "--json", "--timeout", String(timeoutSec)];
   if (a.memoryMb) args.push("--memory", String(a.memoryMb));
   if (a.backend) args.push("--backend", a.backend);
   if (a.raw) args.push("--raw");
   if (a.stats) args.push("--stats");
+  if (a.dimacs !== undefined) args.push("--dimacs");
   if (a.spec) args.push(path.isAbsolute(a.spec) ? a.spec : path.join(LAB, a.spec)); else args.push("-");
-  const r = await runZ3lab(args, { stdin: a.source, timeoutMs: (timeoutSec + 15) * 1000 });
+  const r = await runZ3lab(args, { stdin: a.dimacs ?? a.source, timeoutMs: (timeoutSec + 15) * 1000 });
   if (r.timedOut) return out(`z3lab timed out after ${timeoutSec + 15}s (killed).`, true);
   // exit 10 (unsat), 11 (unknown), 12 (timeout) are verdicts in the JSON, not tool failures
   const verdict = r.code === 0 || (r.code !== null && r.code >= 10 && r.code <= 12);
