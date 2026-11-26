@@ -38,7 +38,7 @@ z3 の場所は `Z3_EXE` > `lib\z3\bin\z3.exe` > `lib\z3.exe` > PATH の順で�
 `--json` の出力: `status`(`sat` / `unsat` / `unknown` / `timeout` / `error`)、`model`(定数 → 値)、
 `functions`(引数付きの `define-fun`)、`unsatCore`(`(! F :named n)` で名前を付けた表明のみ)、
 `reasonUnknown`、`errors`、`stats`(`--stats` のとき)、`elapsedMs`。
-DIMACS 入力では `model` の代わりに `dimacs`(`variables`、`clauses`、`assignment`)が付く。
+DIMACS 入力では `model` の代わりに `dimacs`(`variables`、`clauses`、`assignment`)が付き、`unsatCore` は付かない。
 終了コード: 0 sat、10 unsat、11 unknown、12 timeout、1 error、2 使い方の誤り。
 
 タイムアウトは z3 の `-T:` と、その 5 秒後のプロセス kill の二重。

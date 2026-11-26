@@ -51,7 +51,7 @@ export function dimacsToSmt(p: DimacsProblem): string {
 }
 
 // Solve DIMACS text. On sat the result has `dimacs.assignment` (one signed integer per variable, as in a SAT solver's
-// "v" line) and no `model`. The assignment is checked against every clause before it is reported.
+// "v" line) and no `model`; there is never an `unsatCore`. The assignment is checked against every clause before it is reported.
 export async function solveDimacs(solver: Solver, text: string, opts: SolveOptions = {}): Promise<SolveResult> {
   let p: DimacsProblem;
   try { p = parseDimacs(text); }
@@ -59,6 +59,7 @@ export async function solveDimacs(solver: Solver, text: string, opts: SolveOptio
 
   const r = await solver.solve(dimacsToSmt(p), { ...opts, raw: false, stats: opts.stats });
   r.dimacs = { variables: p.variables, clauses: p.clauses.length };
+  delete r.unsatCore; // clauses have no names, so an unsat core is meaningless here (an empty one would read as "unsat on its own")
   if (r.status !== "sat" || !r.model) return r;
 
   // a variable the model does not mention is unconstrained: report it as false

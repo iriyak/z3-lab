@@ -21,7 +21,7 @@ z3-lab を作る過程(連絡帳 #82〜#87、2026-11-26)で出会った落とし
   S 式として読む。入力に自前の `(check-sat)` があれば何も足さず(raw)、`push` / `pop` / `get-value` を自由に使える。
 - **終了コードの意味は流儀で逆になる**: z3lab は 0 = sat、10 = unsat。SAT コンペは 10 = SAT、20 = UNSAT。
 - **`unsat core` が取れる条件**: `(assert (! F :named n))` で名前を付けた表明だけが対象。名前の無い表明は core に出ない。
-  DIMACS の節は名前が無いので、core は空になる。
+  DIMACS の節は名前が無いので、core は作れない(空の `[]` を返すと「前提なしで矛盾」と読めてしまうので、DIMACS の結果には `unsatCore` 自体を付けない)。
 - **`unsat` のあとの `get-value` / `get-model`** は `model is not available` のエラー。通常の挙動。
 - **時間制限**: `(set-option :timeout ミリ秒)` は `check-sat` ごと。`0` は無制限。`unknown` と理由 `timeout` の組を `status: timeout` に
   対応づける。ソフトな制限が効かない場合に備えて、外側にもう 1 つ(プロセス kill、スレッド停止)を置く二重構えにした。

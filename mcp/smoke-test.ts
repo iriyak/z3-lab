@@ -69,7 +69,7 @@ for (const backend of hasWasm ? ["exe", "wasm"] : ["exe"]) {
 
   r = await ask({ action: "solve", spec: "examples/dimacs/pigeonhole-4-3.cnf" });
   j = JSON.parse(r.text);
-  expect("DIMACS file (.cnf spec): pigeonhole 4 into 3 is unsat", !r.isError && j.status === "unsat" && j.dimacs.clauses === 22, r.text);
+  expect("DIMACS file (.cnf spec): pigeonhole 4 into 3 is unsat", !r.isError && j.status === "unsat" && j.dimacs.clauses === 22 && !("unsatCore" in j), r.text);
 
   r = await ask({ action: "solve", dimacs: "p cnf 2 3\n1 2 0\n-1 0\n" });
   j = JSON.parse(r.text);
