@@ -17,7 +17,9 @@ import { makeSolver } from "../lib/index";
 
 const HERE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const die = (msg: string): never => { console.error(`z3lab: ${msg}`); process.exit(2); };
-const readStdin = async () => { let s = ""; process.stdin.setEncoding("utf8"); for await (const c of process.stdin) s += c; return s; };
+// PowerShell pipes (and Notepad-saved files) may start with a UTF-8 BOM; z3 would read it as 3 stray characters
+const stripBom = (s: string) => s.replace(/^\uFEFF/, "");
+const readStdin = async () => { let s = ""; process.stdin.setEncoding("utf8"); for await (const c of process.stdin) s += c; return stripBom(s); };
 
 const [cmd = "help", ...rest] = process.argv.slice(2);
 // exit codes: 0 sat/ok, 10 unsat, 11 unknown, 12 timeout, 1 error, 2 usage
@@ -53,7 +55,7 @@ switch (cmd) {
     if (memoryMb !== undefined && !(memoryMb > 0)) die("--memory needs a positive number");
     let text: string;
     if (file === "-") text = await readStdin();
-    else { if (!existsSync(file)) die(`no such file: ${file}`); text = readFileSync(file, "utf8"); }
+    else { if (!existsSync(file)) die(`no such file: ${file}`); text = stripBom(readFileSync(file, "utf8")); }
     const r = await makeSolver().solve(text, { timeoutSec, memoryMb, raw, stats });
     if (json) console.log(JSON.stringify(r, null, 2));
     else {
