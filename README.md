@@ -1,0 +1,71 @@
+# z3-lab
+
+Z3(SMT ソルバ)を手軽に試すための足場。SAT 問題は Z3 の Bool だけで扱える。
+`z3` の実行ファイルを CLI と MCP ツールの両方から同じ形で呼べるようにしたもの。bun + z3 だけで動き、
+**Windows ネイティブ(Documents 配下など)を基本**にする(WSL2 は必要になるまで使わない)。
+[tlaplus-lab](https://github.com/iriyak/tlaplus-lab) と同じ流儀。経緯と方針は連絡帳 #82(channel z3)。
+
+## セットアップ(Windows / PowerShell)
+
+必要なもの: bun。z3 は下のスクリプトで取得する。
+
+```powershell
+cd $HOME\Documents\z3-lab
+bun install                            # MCP 用の依存(CLI だけなら不要)
+.\scripts\get-z3.ps1                   # 公式 Windows 版 z3 を lib\z3 に展開(bin\z3.exe)
+$env:Path += ";$PWD\bin"               # 恒久化するなら環境変数 Path に bin を追加
+z3lab version
+z3lab solve examples\sat-basic.smt2
+```
+
+z3 の場所は `Z3_EXE` > `lib\z3\bin\z3.exe` > `lib\z3.exe` > PATH の順で探す。
+`z3lab.ps1` が「スクリプトの実行が無効」と拒否されたら、一度だけ
+`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` を実行する。
+
+## CLI: `bin/z3lab`(実体は `bin/z3lab.ts`。PowerShell は `z3lab.ps1`、WSL2/Linux は `z3lab`)
+
+| コマンド | 内容 |
+|---|---|
+| `z3lab version` | z3 のバージョン |
+| `z3lab solve [--json] [--timeout 秒] [--memory MB] [--stats] [--raw] [File.smt2 \| -]` | SMT-LIB 2 を解く。ファイル省略か `-` で標準入力 |
+| `z3lab put Name.smt2` | 標準入力を `work/` に保存 |
+
+`solve` は入力に `(check-sat)` を **足す**(続けて `get-model` / `get-unsat-core` / `reason-unknown`)。
+入力に自分の `(check-sat)` があるか `--raw` を付けると、スクリプトをそのまま実行して z3 の出力を `output` に返す
+(`push` / `pop` や `get-value` を使う実験向き)。
+
+`--json` の出力: `status`(`sat` / `unsat` / `unknown` / `timeout` / `error`)、`model`(定数 → 値)、
+`functions`(引数付きの `define-fun`)、`unsatCore`(`(! F :named n)` で名前を付けた表明のみ)、
+`reasonUnknown`、`errors`、`stats`(`--stats` のとき)、`elapsedMs`。
+終了コード: 0 sat、10 unsat、11 unknown、12 timeout、1 error、2 使い方の誤り。
+
+タイムアウトは z3 の `-T:` と、その 5 秒後のプロセス kill の二重。
+
+## MCP ツール: `z3`
+
+`mcp/z3-tool.ts` が `registerZ3Tool(server)` を export している。local-mcp-server に入れるときは
+この 1 ファイルをコピーして登録する(tlc と同じやり方)。単体確認は:
+
+```sh
+bun run mcp/server.ts          # stdio。MCP Inspector から接続できる
+bun run mcp/smoke-test.ts      # 一通りの動作確認(8 件)
+```
+
+引数: `action`(`version` / `solve`)、`source`(SMT-LIB 2 のインライン)か `spec`(lab 内のパス)、
+`raw`、`stats`、`timeoutSec`、`memoryMb`。環境変数: `Z3_LAB`(lab のフォルダ。既定 `<ホーム>/z3-lab`。
+Documents に置いたなら必ず指定)、`Z3_EXE`。
+
+## サンプル(`examples/`)
+
+| ファイル | 内容 |
+|---|---|
+| `sat-basic.smt2` | 整数と Bool の制約(sat) |
+| `unsat-core.smt2` | 名前付き表明で unsat core |
+| `nqueens4.smt2` | 4 クイーン |
+| `with-function.smt2` | 未解釈関数。model に `functions` が出る |
+
+## 構成と今後
+
+- `lib/solver.ts` … CLI と MCP が知っている薄い `Solver` インターフェース
+- `lib/z3-exe.ts` … バックエンド 1(z3 実行ファイルを子プロセスで。今はここだけ)
+- 予定: `z3-solver`(npm、WASM)を第二バックエンドとして `lib/` に追加。`push/pop` の常駐セッション。名前付きの式から組む入口

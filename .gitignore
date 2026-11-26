@@ -1,0 +1,8 @@
+lib/z3/
+lib/z3.exe
+lib/z3
+work/
+node_modules/
+*.old
+Claude outputs/
+bun.lock

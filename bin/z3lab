@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# POSIX shim: the real CLI is bin/z3lab.ts (needs bun and z3). On Windows use bin/z3lab.ps1.
+exec bun "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/z3lab.ts" "$@"
