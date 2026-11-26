@@ -1,6 +1,7 @@
 // Spawns mcp/server.ts over stdio with the MCP SDK client and exercises the `z3` tool.
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -79,6 +80,27 @@ for (const backend of hasWasm ? ["exe", "wasm"] : ["exe"]) {
 
   r = await ask({ action: "solve" });
   expect("source or spec required", r.isError, r.text);
+
+  // resident session (CLI `z3lab session`, JSON lines; the lab's own MCP tool is one-shot, local-mcp-server holds sessions)
+  const lab = path.resolve(mcpDir, "..");
+  const sess = (reqs: unknown[], env: Record<string, string> = {}) => {
+    const p = spawnSync(process.execPath, [path.join(lab, "bin", "z3lab.ts"), "session", "--backend", backend, "--timeout", "10"],
+      { input: reqs.map((q) => JSON.stringify(q)).join("\n") + "\n", encoding: "utf8", env: { ...process.env, ...env } as Record<string, string> });
+    return (p.stdout ?? "").replace(/\r\n/g, "\n").split("\n").filter(Boolean).map((l) => JSON.parse(l));
+  };
+  const L = sess([
+    { script: "(declare-const x Int)(push)(assert (> x 3))(check-sat)" },
+    { script: "(assert (< x 2))(check-sat)(pop)(check-sat)(get-value (x))" },
+    { script: "(assert (bad" },
+    { close: true },
+  ]);
+  expect("session: ready line", L[0]?.ready === true && L[0].backend === `z3-${backend}`, JSON.stringify(L[0]));
+  expect("session: state survives between runs (push / pop)", L[1]?.verdicts?.join() === "sat" && L[2]?.verdicts?.join() === "unsat,sat" && /^\(\(x \d+\)\)$/m.test(L[2].output), JSON.stringify(L.slice(1, 3)));
+  expect("session: unbalanced input refused, session still usable", L[3]?.errors?.length === 1 && !L[3].closed, JSON.stringify(L[3]));
+  expect("session: close", L[4]?.closed === true, JSON.stringify(L[4]));
+
+  const en = spawnSync(process.execPath, [path.join(lab, "examples", "sudoku", "enumerate.ts")], { encoding: "utf8", env: { ...process.env, Z3_BACKEND: backend } as Record<string, string> });
+  expect("sudoku enumerate: 33 solutions with one session", /all 33 solutions/.test(en.stdout ?? ""), (en.stdout ?? "") + (en.stderr ?? ""));
 
 }
 

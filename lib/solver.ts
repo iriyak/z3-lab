@@ -24,9 +24,12 @@ export interface SolveResult {
   elapsedMs: number;
 }
 
+import type { Session, SessionOptions } from "./session";
+
 export interface Solver {
   readonly name: string;
   version(): Promise<string>;
   solve(smtlib: string, opts?: SolveOptions): Promise<SolveResult>;
+  openSession?(opts?: SessionOptions): Promise<Session>; // a resident session (state survives across run() calls)
   dispose?(): Promise<void>; // release resources (the WASM backend's worker threads); call before the process ends
 }

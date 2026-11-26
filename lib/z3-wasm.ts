@@ -6,10 +6,12 @@
 // watchdog that stops the worker threads if z3 does not honour it; call dispose() before the process ends.
 import { buildScript, interpret } from "./smtlib";
 import type { SolveOptions, SolveResult, Solver } from "./solver";
+import { checkScript, readOutput, type Session, type SessionOptions, type SessionRunResult } from "./session";
 
 interface Loaded { api: any; Z3: any; em: any; Context: any }
 let loaded: Promise<Loaded> | undefined;
 let seq = 0;
+let generation = 0; // bumped each time the instance is torn down, so older sessions know they are dead
 
 function load(): Promise<Loaded> {
   loaded ??= (async () => {
@@ -20,6 +22,61 @@ function load(): Promise<Loaded> {
   })();
   loaded.catch(() => { loaded = undefined; }); // a failed load can be retried
   return loaded;
+}
+
+// A resident Context: eval_smtlib2_string keeps declarations, assertions and push/pop levels in it between calls.
+// Limit: if a run outlives its limit the only way to stop z3 is killThreads, which takes down the whole WASM instance,
+// so every wasm session of this process is gone then (they report closed on their next run).
+class Z3WasmSession implements Session {
+  readonly name = "z3-wasm";
+  private ctx: any;
+  private closed = false;
+  private tail: Promise<unknown> = Promise.resolve();
+  constructor(private l: Loaded, private timeoutSec: number) {
+    this.ctx = new l.Context(`s${++seq}`);
+    this.first = l.Z3.eval_smtlib2_string(this.ctx.ptr, `(set-option :timeout ${timeoutSec * 1000})`) as Promise<string>;
+  }
+  private first: Promise<string>;
+  get alive(): boolean { return !this.closed && loaded !== undefined && this.gen === generation; }
+  private gen = generation;
+
+  run(script: string, opts: { timeoutSec?: number } = {}): Promise<SessionRunResult> {
+    const r = this.tail.then(() => this.runOne(script, opts.timeoutSec));
+    this.tail = r.catch(() => {});
+    return r;
+  }
+
+  private async runOne(script: string, limitSec?: number): Promise<SessionRunResult> {
+    const t0 = Date.now();
+    const res = (output: string, errors: string[], closed?: boolean): SessionRunResult => {
+      const o = readOutput(output);
+      return { output, verdicts: o.verdicts, errors: [...errors, ...o.errors], elapsedMs: Date.now() - t0, ...(closed ? { closed: true } : {}) };
+    };
+    if (!this.alive) return res("", ["the session is closed"], true);
+    const bad = checkScript(script);
+    if (bad) return res("", [bad]);
+    await this.first;
+    const watchMs = ((limitSec ?? this.timeoutSec) + 5) * 1000;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const watchdog = new Promise<"stuck">((resolve) => { timer = setTimeout(() => resolve("stuck"), watchMs); });
+    try {
+      const out = await Promise.race([this.l.Z3.eval_smtlib2_string(this.ctx.ptr, script) as Promise<string>, watchdog]);
+      if (out === "stuck") {
+        await new Z3WasmSolver().dispose(); // stops the worker threads; every wasm session of this process is gone
+        return res("", [`stopped after ${watchMs / 1000}s: the session and its state are gone (all wasm sessions of this process)`], true);
+      }
+      return res(out.replace(/\r\n/g, "\n"), []);
+    } catch (e) {
+      return res("", [(e as Error).message ?? String(e)]);
+    } finally { clearTimeout(timer); }
+  }
+
+  async close(): Promise<void> {
+    if (this.closed) return;
+    const was = this.alive;
+    this.closed = true;
+    if (was) { try { this.l.Z3.del_context(this.ctx.ptr); } catch { /* instance already gone */ } }
+  }
 }
 
 export class Z3WasmSolver implements Solver {
@@ -59,6 +116,10 @@ export class Z3WasmSolver implements Solver {
     }
   }
 
+  async openSession(opts: SessionOptions = {}): Promise<Session> {
+    return new Z3WasmSession(await load(), opts.timeoutSec ?? 30);
+  }
+
   // The high-level Context frees itself only from a GC finalizer, and the WASM heap is a fixed 2 GB, so ~80
   // calls in one process ran out of memory (Aborted(Cannot enlarge memory arrays ...)). Delete the context
   // now (300 calls with forced GC afterwards ran clean, so the finalizer's later delete is harmless).
@@ -70,6 +131,7 @@ export class Z3WasmSolver implements Solver {
     if (!loaded) return;
     const p = loaded;
     loaded = undefined;
+    generation++;
     try { const { api, em } = await p; await api.killThreads(em); } catch { /* nothing to stop */ }
   }
 }

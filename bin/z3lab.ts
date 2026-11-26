@@ -2,6 +2,7 @@
 // z3lab — thin CLI over z3 (SMT-LIB 2). Runs on Windows, WSL2 and Linux (bun + z3).
 //   z3lab version
 //   z3lab solve [opts] [File.smt2|-]    # SMT-LIB text from the file, or stdin when "-" / omitted
+//   z3lab session [--backend NAME] [--timeout SEC] [--memory MB]   # resident session over JSON lines (see below)
 //   z3lab put   Name.smt2               # save stdin to work/ (for the MCP tool)
 // solve options:
 //   --json            print the structured result as JSON (status, model, unsatCore, stats, reasonUnknown)
@@ -11,6 +12,13 @@
 //   --backend NAME    exe (z3 executable, default) or wasm (npm z3-solver)
 //   --dimacs          the input is DIMACS CNF (automatic for *.cnf files); prints "s SATISFIABLE" and "v ... 0" lines
 //   --raw             run the script as is (no check-sat / get-model appended); z3's output in `output`
+// session: one resident solver whose state (declarations, assertions, push/pop) lasts until it is closed.
+//   Reads one JSON object per stdin line, answers with one JSON line on stdout:
+//     first line out:  {"ready":true,"backend":"z3-exe","version":"..."}
+//     {"script":"(declare-const x Int)(assert (> x 3))(check-sat)"}  ->  {"output":"sat\n","verdicts":["sat"],"errors":[],"elapsedMs":3}
+//     {"script":"...","timeoutSec":10}   limit for this run only (default: --timeout)
+//     {"close":true}  ->  {"closed":true}, then exit. End of stdin closes it too.
+//   "closed":true in a reply means the session is gone (timeout kill, z3 exited); start a new one.
 // env: Z3_EXE (path to z3), Z3_BACKEND (exe | wasm)
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
@@ -32,6 +40,45 @@ switch (cmd) {
     const solver = (() => { try { return makeSolver(backend); } catch (e) { return die((e as Error).message); } })();
     try { console.log(await solver.version()); } catch (e) { die(String((e as Error).message ?? e)); } finally { await solver.dispose?.(); }
     break;
+  }
+  case "session": {
+    let backend: string | undefined, timeoutSec = 30, memoryMb: number | undefined;
+    for (let i = 0; i < rest.length; i++) {
+      const a = rest[i];
+      if (a === "--backend") backend = rest[++i];
+      else if (a === "--timeout") timeoutSec = Number(rest[++i]);
+      else if (a === "--memory") memoryMb = Number(rest[++i]);
+      else die(`unknown option ${a}`);
+    }
+    if (!(timeoutSec > 0)) die("--timeout needs a positive number");
+    const solver = (() => { try { return makeSolver(backend); } catch (e) { return die((e as Error).message); } })();
+    const reply = (o: unknown) => process.stdout.write(JSON.stringify(o) + "\n");
+    let session;
+    try { session = await solver.openSession!({ timeoutSec, memoryMb }); reply({ ready: true, backend: solver.name, version: await solver.version() }); }
+    catch (e) { reply({ ready: false, error: String((e as Error).message ?? e) }); await solver.dispose?.(); process.exit(1); }
+    let buf = "";
+    process.stdin.setEncoding("utf8");
+    const lines: string[] = [];
+    let wake: (() => void) | undefined;
+    let ended = false;
+    process.stdin.on("data", (d) => { buf += d; let k; while ((k = buf.indexOf("\n")) >= 0) { lines.push(buf.slice(0, k)); buf = buf.slice(k + 1); } wake?.(); });
+    process.stdin.on("end", () => { if (buf.trim()) lines.push(buf); ended = true; wake?.(); });
+    for (;;) {
+      while (!lines.length && !ended) await new Promise<void>((r) => { wake = r; });
+      const line = lines.shift();
+      if (line === undefined) break;
+      if (!line.trim()) continue;
+      let req: { script?: unknown; close?: unknown; timeoutSec?: unknown };
+      try { req = JSON.parse(stripBom(line)); } catch (e) { reply({ errors: [`bad JSON line: ${(e as Error).message}`] }); continue; }
+      if (req.close) break;
+      if (typeof req.script !== "string") { reply({ errors: ['need {"script": "..."} or {"close": true}'] }); continue; }
+      const limit = typeof req.timeoutSec === "number" && req.timeoutSec > 0 ? req.timeoutSec : undefined;
+      reply(await session.run(req.script, { timeoutSec: limit }));
+    }
+    await session.close();
+    reply({ closed: true });
+    await solver.dispose?.();
+    process.exit(0);
   }
   case "put": {
     if (rest.length !== 1) die("usage: z3lab put Name.smt2  (content on stdin)");
